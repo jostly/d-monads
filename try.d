@@ -7,6 +7,9 @@ public:
 	abstract @property T get();
 	abstract @property Throwable error();
 
+	// foreach compability
+	abstract int opApply(int delegate(ref T) dg);	
+
 	Try!U flatMap(U)(Try!U function(T t) f) {
 		if (this.isSuccess) {
 			try {
@@ -15,7 +18,7 @@ public:
 			catch (Exception t) {
 				return new Failure!U(t);
 			}			
-		} else { // TODO cast
+		} else { 
 			return new Failure!U(this.error);
 		}
 	}
@@ -28,7 +31,17 @@ public:
 		}
 	}
 
-	abstract int opApply(int delegate(ref T) dg);
+	Try!U map(U)(U function(T t) f) {
+		if (isSuccess) {
+			try {
+				return new Success!U(f(get));
+			} catch (Exception e) {
+				return new Failure!U(e);
+			}					
+		} else {
+			return new Failure!U(error);
+		}
+	}
 }
 
 class Failure(T) : Try!T {
@@ -88,7 +101,7 @@ Try!T failure(T = Throwable)(Throwable t) {
 }
 
 unittest { 
-	writeln("Test basic Try operations");
+	writeln("Test basic and monadic Try operations");
 	auto ok = new Success!int(1);
 
 	assert(ok.isSuccess, "isSuccess for a Success should be true");
@@ -171,3 +184,36 @@ unittest {
 		assert(false, "foreach should not iterate at all on a Failure");
 	}
 }
+
+unittest {
+	writeln("Test type retained in flatMap on Failure");
+
+	Try!int successOfInt = success(17);
+
+	Try!int failureOfInt = successOfInt.flatMap(function Try!int(int x) { throw new Exception("FAIL"); });
+
+	Try!string failureOfString = failureOfInt.flatMap((x) { return success("seventeen"); });
+
+	string defaulted = failureOfString.getOrElse("sixteen");
+
+	assert(defaulted == "sixteen");
+}
+
+unittest {
+	writeln("Test map operation");
+
+	auto double_fun = (int v) { return v * 2; };
+	auto error_fun = (int v) { throw new Exception("FAIL"); return 0; };
+	auto never_fun = (int v) { assert(false, "map on Failure should not call mapping function"); return v; };
+
+	auto ok = success(17);
+
+	assert(ok.map(double_fun).get == 34, "map on Success should apply mapping function to value and wrap result in Success if function succeeds");
+	assert(ok.map(error_fun).error.msg == "FAIL", "map on Success should apply mapping function to value and wrap result in Failure of function throws");
+
+	auto fail = failure!int(new Exception("SUPERFAIL"));
+
+	assert(fail.map(never_fun).error.msg == "SUPERFAIL", "map on Failure should retain original failure");	
+
+}
+
