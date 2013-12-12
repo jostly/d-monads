@@ -27,6 +27,8 @@ public:
 			return def();
 		}
 	}
+
+	abstract int opApply(int delegate(ref T) dg);
 }
 
 class Failure(T) : Try!T {
@@ -35,6 +37,10 @@ public:
 	override @property bool isSuccess() { return false; }
 	override @property T get() { throw _exception; }
 	override @property Throwable error() { return _exception; }
+
+	override int opApply(int delegate(ref T) dg) {
+		return 0;
+	}
 
 	this(Throwable exception) {
 		this._exception = exception;
@@ -52,6 +58,10 @@ public:
 	override @property T get() { return _value; }
 	override @property Throwable error() { throw new Exception("Not a Failure"); }
 
+	override int opApply(int delegate(ref T) dg) {
+		return dg(_value);
+	}
+
 	this(T val) {
 		this._value = val;
 	}
@@ -61,7 +71,7 @@ public:
 	private T _value;
 }
 
-Try!T attempt(T)(lazy T expression) {
+Try!T attempt(T)(T function() expression) {
 	try {
 		return new Success!T(expression());
 	} catch (Exception e) {
@@ -69,26 +79,29 @@ Try!T attempt(T)(lazy T expression) {
 	}
 }
 
-class FakeException : Exception {
-	this (string msg, string file = __FILE__, size_t line = __LINE__) {
-		super(msg, file, line, null);
-	}
+Try!T success(T)(T val) {
+	return new Success!T(val);
 }
 
-unittest {	
-	auto ok1 = new Success!int(1);
+Try!T failure(T = Throwable)(Throwable t) {
+	return new Failure!T(t);
+}
 
-	assert(ok1.isSuccess, "isSuccess for a Success should be true");
-	assert(!ok1.isFailure, "isFailure for a Success should be false");
-	assert(ok1.get == 1, "get for a Success is the stored thing");
+unittest { 
+	writeln("Test basic Try operations");
+	auto ok = new Success!int(1);
+
+	assert(ok.isSuccess, "isSuccess for a Success should be true");
+	assert(!ok.isFailure, "isFailure for a Success should be false");
+	assert(ok.get == 1, "get for a Success is the stored thing");
 	try {
-		ok1.error;
+		ok.error;
 		assert(false, "error for a Success should throw an exception");
 	} catch (Exception e) {}
 
-	assert(ok1.flatMap((x) { return new Success!int(2+x); }).get == 3,
+	assert(ok.flatMap((x) { return new Success!int(2+x); }).get == 3,
 		"flatMap on Success maps the stored value");
-	assert(ok1.getOrElse(3) == 1, "getOrElse on Success gets stored thing");
+	assert(ok.getOrElse(3) == 1, "getOrElse on Success gets stored thing");
 
 
 	auto fail = new Failure!int(new Exception("FAIL"));
@@ -110,21 +123,51 @@ unittest {
 		"flatMap on a Failure should propagate original error"
 		);
 	assert(fail.getOrElse(3.2) == 3.2, "getOrElse on Failure gets else argument");
-
 }
 
-Try!int mult(int v) { return new Success!int(v*3); }
-Try!int fail(int v) { throw new FakeException("SOMETHING WRONG"); }
+unittest {
+	writeln("Test attempt() creation of Try");
 
-int fail2(int v) { throw new FakeException("SOMETHING WRONG"); }
+	auto ok = attempt({ return 17; });
 
-void main() {
-	//auto succ = new Failure!int(new FakeException("hoho")); 
-	auto succ = attempt(1);
-	//auto issuc = succ.isSuccess();
-	auto succ2 = succ;
-		//flatMap!int(&fail).
-		//.flatMap!int(&mult);
+	assert(ok.isSuccess == true, "attempt() that doesn't throw is a Success");
+	assert(ok.get == 17);
 
-	writeln("Hello, world: " ~ to!string(succ2.getOrElse(17)));
+	auto fail = attempt({ throw new Exception("FAIL"); return 17; });
+
+	assert(fail.isSuccess == false, "attempt() that throws is a Failure");
+	assert(fail.error.msg == "FAIL");
+}
+
+unittest {
+	writeln("Test success() and failure() creation of Try");
+
+	auto ok = success(17);
+
+	assert(ok.isSuccess == true, "success() gives a Success");
+	assert(ok.get == 17);
+
+	auto fail = failure(new Exception("FAIL"));
+
+	assert(fail.isSuccess == false, "failure() gives a Failure");
+	assert(fail.error.msg == "FAIL");
+}
+
+unittest {
+	writeln("Test foreach compability");
+
+	auto ok = success(42);
+
+	auto timesRan = 0;
+	foreach(t; ok) {
+		assert(t == 42, "foreach iterates on the value in a Success");
+		timesRan += 1;
+	}
+	assert(timesRan == 1, "foreach iterates exactly once on a Success");
+
+	auto fail = failure(new Exception("FAIL"));
+
+	foreach(t; fail) {
+		assert(false, "foreach should not iterate at all on a Failure");
+	}
 }
