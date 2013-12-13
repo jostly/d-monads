@@ -9,7 +9,7 @@ public:
 
 	abstract Option!T filter(bool delegate(ref T) p);
 
-	Option!U flatMap(U)(Option!U function(T) f) {
+	Option!U flatMap(U)(Option!U function(ref T) f) {
 		if (isDefined) {
 			return (cast(Some!T)this).flatMap(f);
 		} else { 
@@ -67,7 +67,7 @@ public:
 		return some(f(_value));
 	}
 
-	protected auto flatMap(U)(U function(T) f) {
+	protected auto flatMap(U)(U function(ref T) f) {
 		return f(_value);
 	}
 }
@@ -108,8 +108,8 @@ auto none(T)() {
 unittest {
 	writeln("Test Option basic monad operations");
 
-	auto mult_fun = (int x) { return some(x*2); };
-	auto never_fun = (int x) { assert(false, "flatMap on None never calls the mapping function"); return none!int; };
+	auto mult_fun = (ref int x) { return some(x*2); };
+	auto never_fun = (ref int x) { assert(false, "flatMap on None never calls the mapping function"); return none!int; };
 
 	Option!int option = some(17);
 	assert(option.isDefined == true, "an Option with a value is defined");
@@ -125,7 +125,7 @@ unittest {
 	
 	assert(option.flatMap(never_fun).isDefined == false, "flatMap on None returns None");
 	
-	assert(none!(int).flatMap((int x) { return some("string"); }).isDefined == false,
+	assert(none!(int).flatMap((ref int x) { return some("string"); }).isDefined == false,
 		"type changes are propagated on flatMap on None");
 
 	assert(option.getOrElse(99) == 99, "getOrElse on None should return the supplied argument");	
