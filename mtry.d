@@ -1,3 +1,5 @@
+module mtry;
+
 import std.stdio, std.conv;
 
 abstract class Try(T) {
@@ -92,11 +94,11 @@ Try!T attempt(T)(T function() expression) {
 	}
 }
 
-Try!T success(T)(T val) {
+auto success(T)(T val) {
 	return new Success!T(val);
 }
 
-Try!T failure(T = Throwable)(Throwable t) {
+auto failure(T = Throwable)(Throwable t) {
 	return new Failure!T(t);
 }
 
