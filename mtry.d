@@ -13,21 +13,21 @@ public:
 	abstract int opApply(int delegate(ref T) dg);	
 
 	Try!U flatMap(U)(Try!U function(T t) f) {
-		if (this.isSuccess) {
+		if (isSuccess) {
 			try {
-				return f(this.get);
+				return f(get);
 			}
 			catch (Exception t) {
 				return new Failure!U(t);
 			}			
 		} else { 
-			return new Failure!U(this.error);
+			return new Failure!U(error);
 		}
 	}
 
 	auto getOrElse(U)(lazy U def) {
-		if (this.isSuccess) {
-			return this.get;
+		if (isSuccess) {
+			return get;
 		} else {
 			return def();
 		}
