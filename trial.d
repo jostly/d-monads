@@ -1,18 +1,20 @@
-module mtry;
+module trial;
 
 import std.stdio, std.conv;
 
-abstract class Try(T) {
+abstract class Trial(T) {
 public:
-	abstract @property bool isFailure();	
-	abstract @property bool isSuccess();
-	abstract @property T get();
-	abstract @property Throwable error();
+	abstract @property pure bool isFailure();	
+	abstract @property pure bool isSuccess();
+	abstract @property pure T get();
+	abstract @property pure Throwable error();
 
 	// foreach compability
 	abstract int opApply(int delegate(ref T) dg);	
 
-	Try!U flatMap(U)(Try!U function(T t) f) {
+	abstract Trial!T filter(bool delegate(ref T) p);
+
+	Trial!U flatMap(U)(Trial!U function(T t) f) {
 		if (isSuccess) {
 			try {
 				return f(get);
@@ -33,7 +35,7 @@ public:
 		}
 	}
 
-	Try!U map(U)(U function(T t) f) {
+	Trial!U map(U)(U function(T t) f) {
 		if (isSuccess) {
 			try {
 				return new Success!U(f(get));
@@ -46,7 +48,7 @@ public:
 	}
 }
 
-class Failure(T) : Try!T {
+class Failure(T) : Trial!T {
 public:
 	override @property bool isFailure() { return true; }
 	override @property bool isSuccess() { return false; }
@@ -55,6 +57,17 @@ public:
 
 	override int opApply(int delegate(ref T) dg) {
 		return 0;
+	}
+
+	override bool opEquals(Object rhs) {
+		auto that = cast(Failure!T)rhs;
+
+		if (that) return that._exception == this._exception;
+		else return false;
+	}	
+
+	override Trial!T filter(bool delegate(ref T) p) {
+		return this;
 	}
 
 	this(Throwable exception) {
@@ -66,7 +79,7 @@ public:
 	private Throwable _exception;
 }
 
-class Success(T) : Try!(T) {	
+class Success(T) : Trial!(T) {	
 public:
 	override @property bool isFailure() { return false; }
 	override @property bool isSuccess() { return true; }
@@ -75,6 +88,22 @@ public:
 
 	override int opApply(int delegate(ref T) dg) {
 		return dg(_value);
+	}
+
+	override bool opEquals(Object rhs) {
+		auto that = cast(Success!T)rhs;
+
+		if (that) return that._value == this._value;
+		else return false;
+	}	
+
+	override Trial!T filter(bool delegate(ref T) p) {
+		try {
+			if (p(_value)) return this;
+			else return failure!T(new Exception("Predicate does not hold for " ~ to!string(_value)));			
+		} catch (Exception e) {
+			return failure!T(e);
+		}
 	}
 
 	this(T val) {
@@ -86,7 +115,7 @@ public:
 	private T _value;
 }
 
-Try!T attempt(T)(T function() expression) {
+Trial!T attempt(T)(T function() expression) {
 	try {
 		return new Success!T(expression());
 	} catch (Exception e) {
@@ -98,12 +127,12 @@ auto success(T)(T val) {
 	return new Success!T(val);
 }
 
-auto failure(T = Throwable)(Throwable t) {
+auto failure(T)(Throwable t) {
 	return new Failure!T(t);
 }
 
 unittest { 
-	writeln("Test basic and monadic Try operations");
+	writeln("Test basic and monadic Trial operations");
 	auto ok = new Success!int(1);
 
 	assert(ok.isSuccess, "isSuccess for a Success should be true");
@@ -133,7 +162,7 @@ unittest {
 
 	assert(
 		fail.flatMap(
-			function Try!int(int x) { assert(false, "flatMap on a Failure should not call the mapping function"); throw new Exception("WRONG_FAIL"); }
+			function Trial!int(int x) { assert(false, "flatMap on a Failure should not call the mapping function"); throw new Exception("WRONG_FAIL"); }
 			).error.msg == "FAIL",
 		"flatMap on a Failure should propagate original error"
 		);
@@ -141,7 +170,7 @@ unittest {
 }
 
 unittest {
-	writeln("Test attempt() creation of Try");
+	writeln("Test attempt() creation of Trial");
 
 	auto ok = attempt({ return 17; });
 
@@ -155,17 +184,34 @@ unittest {
 }
 
 unittest {
-	writeln("Test success() and failure() creation of Try");
+	writeln("Test success() and failure() creation of Trial");
 
 	auto ok = success(17);
 
 	assert(ok.isSuccess == true, "success() gives a Success");
 	assert(ok.get == 17);
 
-	auto fail = failure(new Exception("FAIL"));
+	auto fail = failure!int(new Exception("FAIL"));
 
 	assert(fail.isSuccess == false, "failure() gives a Failure");
 	assert(fail.error.msg == "FAIL");
+}
+
+unittest {
+	writeln("Test Trial equality");
+
+	auto exception = new Exception("TEST");
+
+	Trial!int ok = success(17);
+	Trial!int fail = failure!int(exception);
+
+	assert(ok == success(17), "Success should be equal to another Success if their values are equal");
+
+	assert(ok != success!long(17), "Success should not be equal to another Success if their types are different");
+	assert(ok != fail, "Success should not be equal to a Failure");
+
+	assert(fail == failure!int(exception), "Failure should be equal to another Failure of their errors are equal");
+	assert(fail != failure!long(exception), "Failure should not be equal to another Failure if their types are different");
 }
 
 unittest {
@@ -180,7 +226,7 @@ unittest {
 	}
 	assert(timesRan == 1, "foreach iterates exactly once on a Success");
 
-	auto fail = failure(new Exception("FAIL"));
+	auto fail = failure!int(new Exception("FAIL"));
 
 	foreach(t; fail) {
 		assert(false, "foreach should not iterate at all on a Failure");
@@ -190,11 +236,11 @@ unittest {
 unittest {
 	writeln("Test type retained in flatMap on Failure");
 
-	Try!int successOfInt = success(17);
+	Trial!int successOfInt = success(17);
 
-	Try!int failureOfInt = successOfInt.flatMap(function Try!int(int x) { throw new Exception("FAIL"); });
+	Trial!int failureOfInt = successOfInt.flatMap(function Trial!int(int x) { throw new Exception("FAIL"); });
 
-	Try!string failureOfString = failureOfInt.flatMap((x) { return success("seventeen"); });
+	Trial!string failureOfString = failureOfInt.flatMap((x) { return success("seventeen"); });
 
 	string defaulted = failureOfString.getOrElse("sixteen");
 
@@ -218,4 +264,22 @@ unittest {
 	assert(fail.map(never_fun).error.msg == "SUPERFAIL", "map on Failure should retain original failure");	
 
 }
+
+unittest {
+	writeln("Test Trial filter operation");
+
+	auto ok = success(42);
+
+	assert(ok.filter((ref v) { return v == 42; }) is ok, "filter on Success should return itself if the predicate holds");
+
+	assert(ok.filter((ref v) { return v == 41; }).isFailure == true, "filter on Success should return Failure if the predicate does not hold");
+
+	auto fail = failure!int(new Exception("TEST"));
+
+	assert(fail.filter((ref v) { 
+			assert(false, "Predicate function should never be called when filtering on None"); 
+			return v == 42; 
+		}) is fail, "filter on Failure should return itself");
+}
+
 

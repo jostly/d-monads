@@ -1,9 +1,11 @@
+module option;
+
 import std.stdio, std.conv;
 
 abstract class Option(T) {
 public:
-	abstract @property bool isDefined();
-	abstract @property T get();
+	abstract @property pure bool isDefined();
+	abstract @property pure T get();
 
 	abstract int opApply(int delegate(ref T) dg);
 
@@ -36,8 +38,8 @@ public:
 
 class Some(T) : Option!T {
 public:
-	override @property bool isDefined() { return true; }
-	override @property T get() { return _value; }
+	override @property pure bool isDefined() { return true; }
+	override @property pure T get() { return _value; }
 
 	override int opApply(int delegate(ref T) dg) {
 		return dg(_value);
@@ -78,8 +80,8 @@ auto some(T)(T value) {
 
 class None(T) : Option!T {
 public:
-	override @property bool isDefined() { return false; }
-	override @property T get() { throw new Exception("OH NOES"); }
+	override @property pure bool isDefined() { return false; }
+	override @property pure T get() { throw new Exception("OH NOES"); }
 
 	override int opApply(int delegate(ref T) dg) {
 		return 0;
